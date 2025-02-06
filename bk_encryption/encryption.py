@@ -109,7 +109,7 @@ def encrypt_algorithm(algorithm_directory: str, content_encryption_key: str, fil
         pathlib.Path(i).unlink()
 
     zip_in = ZipFile('temp.zip', 'r')
-    zip_out = ZipFile(f'{algorithm_directory}.zip', 'w')
+    zip_out = ZipFile(filename, 'w')
 
     for item in zip_in.infolist():
         buffer = zip_in.read(item.filename)
