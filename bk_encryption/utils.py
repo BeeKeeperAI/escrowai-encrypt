@@ -3,11 +3,13 @@ from azure.storage.blob import BlobClient
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 
-def encrypt_data(file, salt, key, base_folder, folder, iv, url):
+def encrypt_data(file, salt, key, base_folder, folder, iv, url, n, count):
     if file[0] == '.':
-        return
+        return 0
     if file.endswith('.bkenc'):
         raise Exception(f'Error: cannot encrypt file {file}.')
+    
+    print(f'Encrypting file {file} ({n}/{count})...')
 
     with open(folder + '/' + file, 'rb') as encrypt:
         data = encrypt.read()
@@ -22,6 +24,10 @@ def encrypt_data(file, salt, key, base_folder, folder, iv, url):
     upload_to_blob(url, folder + '/' + file + ".bkenc", base_folder)
 
     pathlib.Path(folder + '/' + file + ".bkenc").unlink()
+
+    print(f'Uploaded file {file + '.bkenc'} ({n}/{count}).')
+
+    return 1
 
 
 def upload_to_blob(url, file, folder):
