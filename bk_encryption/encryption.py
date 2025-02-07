@@ -45,8 +45,8 @@ def generate_wrapped_content_encryption_key(content_encryption_key: str, key_enc
     encrypted = public_key.encrypt(
         cek,
         padding=padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
+            mgf=padding.MGF1(algorithm=hashes.SHA1()),
+            algorithm=hashes.SHA1(),
             label=None
         )
     )
