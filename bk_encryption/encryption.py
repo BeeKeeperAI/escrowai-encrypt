@@ -12,7 +12,6 @@ from zipfile import ZipFile
 from azure.storage.blob import ContainerClient
 from bk_encryption.utils import encrypt_data
 import shutil
-from tqdm import tqdm
 
 
 def generate_content_encryption_key(filename=''):
@@ -206,13 +205,15 @@ def encrypt_upload_dataset_from_blob(dataset_sas_uri_unencrypted: str, content_e
     n = 1
     print(f'{str(count)} blob(s) to be encrypted and uploaded.')
     for blob in blobs:
+        unencrypted_client = ContainerClient.from_container_url(dataset_sas_uri_unencrypted)
+        encrypted_client = ContainerClient.from_container_url(dataset_sas_uri)
         print(f'Beginning download of blob {blob} ({n}/{str(count)})...')
         data = unencrypted_client.download_blob(blob).readall()
         print(f'Encrypting blob {blob}...')
         encrypted = AESGCM(key).encrypt(iv, data, None)
         encrypted = b'Salted__' + salt + encrypted
         print(f'Uploading blob {blob}...')
-        encrypted_client.upload_blob(blob + '.bkenc', encrypted)
+        encrypted_client.upload_blob(blob + '.bkenc', encrypted, overwrite=True)
         print(f'Blob {blob + '.bkenc'} uploaded ({n}/{str(count)}).')
         n += 1
 
