@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.backends import default_backend
 from zipfile import ZipFile
 from azure.storage.blob import ContainerClient
-from bk_encryption.utils import encrypt_data
+from escrowai_encrypt.utils import encrypt_data
 import shutil
 
 
