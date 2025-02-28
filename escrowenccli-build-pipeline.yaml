@@ -1,0 +1,132 @@
+trigger:
+  branches:
+    include:
+    - dev
+    - testing
+    - staging
+    - master
+  paths:
+    exclude:
+    - README.md
+    - "*pipeline.yaml"
+    - "*pipeline.yml"
+
+pr: none
+
+pool:
+  # vmImage: ubuntu-latest
+  name: devops-vmss
+
+variables:
+  - name: environment
+    ${{ if eq( variables['Build.SourceBranchName'], 'dev') }}:
+      value: "dev"
+    ${{ if eq( variables['Build.SourceBranchName'], 'testing') }}:
+      value: "tst"
+    ${{ if eq( variables['Build.SourceBranchName'], 'staging') }}:
+      value: "stg"
+    ${{ if eq( variables['Build.SourceBranchName'], 'master') }}:
+      value: "prd"
+  - name: servicename
+    ${{ if eq( variables['Build.SourceBranchName'], 'dev') }}:
+      value: "sp-terraform-dev"
+    ${{ if eq( variables['Build.SourceBranchName'], 'testing') }}:
+      value: "sp-terraform-tst"
+    ${{ if eq( variables['Build.SourceBranchName'], 'staging') }}:
+      value: "sp-terraform-stg"
+    ${{ if eq( variables['Build.SourceBranchName'], 'master') }}:
+      value: "sp-terraform-prd"
+  - name: Subscription_Name
+    ${{ if eq( variables['Build.SourceBranchName'], 'main') }}:
+      value: "ESCROWAI-DEV"
+    ${{ if eq( variables['Build.SourceBranchName'], 'testing') }}:
+      value: "ESCROWAI-TST"
+    ${{ if eq( variables['Build.SourceBranchName'], 'staging') }}:
+      value: "ESCROWAI-STG"
+    ${{ if eq( variables['Build.SourceBranchName'], 'master') }}:
+      value: "ESCROWAI-PRD"
+  - name: resource_group_name
+    value: "rg-use-dsec-pubbkstorage"
+  - name: storageaccount_name
+    value: "stusebkstoragesdk"
+  - name: container
+    value: "escrowaienc"
+
+jobs:
+- job: GenerateSDKAndPublish
+  displayName: 'Generate SDK and Publish'
+   
+  steps:
+
+  # Checkout code from repository
+  - checkout: self
+    displayName: 'Checkout code'
+    persistCredentials: true
+    submodules: None
+
+  # Install Python packaging tools
+  - script: |
+      sudo apt update
+      sudo apt install python3-pip -y
+      sudo apt install python3-venv -y
+      python3 -m venv venv
+      source venv/bin/activate
+      pip3 install -U setuptools wheel build twine ruff
+    displayName: 'Install Python packaging tools'
+    
+  # Build Wheel File for Python
+  - script: |
+      source venv/bin/activate
+      python -m ruff check . --fix
+      python -m ruff format .
+      python3 -m build -w
+    displayName: 'Build Wheel for EscrowAI Encrypt CLI and Push to PyPI'
+    
+  # Push to PyPI only for master branch
+  - script: |
+      echo "setting twine password variable"
+      echo "##vso[task.setvariable variable=TWINE_PASSWORD]$(TWINE_PASSWORD)"
+      echo "$(TWINE_PASSWORD)"
+      source venv/bin/activate
+      python -m twine upload --skip-existing dist/* --username __token__ --password "$(TWINE_PASSWORD)" --verbose
+    displayName: 'Build Wheel for EscrowAI Encrypt CLI and Push to PyPI'
+    #condition: eq(variables['Build.SourceBranchName'], 'master')
+  
+  - task: AzureCLI@2
+    displayName: "Upload EscrowAI Encrypt CLI and Wheel file to storage"
+    inputs:
+        azureSubscription: '${{variables.servicename}}'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          echo ${{variables.servicename}}
+          ls -al
+          az account set --subscription 33542c4d-c732-4ae7-a50f-8f8fca7dd0fd -o none
+          az config set extension.use_dynamic_install=yes_without_prompt -o none
+          accountkey=`az storage account keys list -g $(resource_group_name) -n $(storageaccount_name) --query="[0].value" -o tsv`
+          uploadtokenexpiry=`date -u -d "5 minutes" '+%Y-%m-%dT%H:%MZ'`
+          uploadsas=$(az storage container generate-sas --name $(container) --https-only --permissions rwl --expiry $uploadtokenexpiry -o tsv --account-name $(storageaccount_name) --account-key $accountkey)
+
+          # Only execute if the branch is not 'master'
+          if [ "$(Build.SourceBranchName)" != "master" ]; then
+            # Find the generated wheel file
+            wheel_file=$(ls ./dist/escrowai-encrypt-*-py3-none-any.whl)
+            echo "Found wheel file: $wheel_file"
+          
+            # Include the branch name in the latest wheel file name
+            branch_name=$(Build.SourceBranchName)
+            latest_wheel_name="./dist/escrowai-encrypt-${branch_name}-latest.whl"
+          
+            # Copy the wheel file to latest with branch name included
+            cp "$wheel_file" "$latest_wheel_name"
+            echo "Copied $wheel_file to $latest_wheel_name"
+          fi
+
+          if [ "$(Build.SourceBranchName)" == "master" ]; then
+           destination_path="dist"
+          else
+           destination_path="dist/${branch_name}"
+          fi
+
+          #az storage azcopy blob upload -c $(container) --account-name $(storageaccount_name) -s "./python-sdk" -d "python-sdk"  --recursive --sas-token $uploadsas -o none
+          az storage azcopy blob upload -c $(container) --account-name $(storageaccount_name) -s "./dist/*" -d "$destination_path"  --recursive --sas-token $uploadsas -o none
