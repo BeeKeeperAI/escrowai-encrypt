@@ -111,12 +111,12 @@ jobs:
           # Only execute if the branch is not 'master'
           if [ "$(Build.SourceBranchName)" != "master" ]; then
             # Find the generated wheel file
-            wheel_file=$(ls ./dist/escrowai-encrypt-*-py3-none-any.whl)
+            wheel_file=$(ls ./dist/escrowai_encrypt-*-py3-none-any.whl)
             echo "Found wheel file: $wheel_file"
           
             # Include the branch name in the latest wheel file name
             branch_name=$(Build.SourceBranchName)
-            latest_wheel_name="./dist/escrowai-encrypt-${branch_name}-latest.whl"
+            latest_wheel_name="./dist/escrowai_encrypt-${branch_name}-latest.whl"
           
             # Copy the wheel file to latest with branch name included
             cp "$wheel_file" "$latest_wheel_name"
