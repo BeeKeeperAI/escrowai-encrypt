@@ -14,7 +14,7 @@ setup(
     description="This package allows EscrowAI users to programmatically encrypt their artifacts and add encryption to their workflows.",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
-    url="https://github.com/BeeKeeperAI/bk-encryption",
+    url="https://github.com/BeeKeeperAI/escrowai-encrypt",
     author="BeeKeeperAI",
     author_email="engineering@beekeeperai.com",
     classifiers=[
@@ -27,7 +27,7 @@ setup(
     python_requires=">=3.6",
     entry_points={
         "console_scripts": [
-            "encrypt = bk_encryption.main:main",
+            "encrypt = escrowai_encrypt.main:main",
         ],
     },
 )
