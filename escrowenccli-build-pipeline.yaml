@@ -101,6 +101,7 @@ jobs:
         inlineScript: |
           echo ${{variables.servicename}}
           ls -al
+          ls ./dist/
           az account set --subscription 33542c4d-c732-4ae7-a50f-8f8fca7dd0fd -o none
           az config set extension.use_dynamic_install=yes_without_prompt -o none
           accountkey=`az storage account keys list -g $(resource_group_name) -n $(storageaccount_name) --query="[0].value" -o tsv`
