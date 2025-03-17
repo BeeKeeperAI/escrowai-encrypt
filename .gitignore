@@ -5,3 +5,6 @@ files
 *.bkenc
 *.zip
 *.der
+*.pyc
+
+.DS_Store
