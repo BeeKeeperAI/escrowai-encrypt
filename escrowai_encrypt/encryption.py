@@ -130,22 +130,21 @@ def encrypt_algorithm(algorithm_directory: str, content_encryption_key: str, fil
         new_files.append(newpaths[0])
 
         print(f'Secret {f[0]} encrypted ({n}/{count}).')
+        n += 1
 
-    shutil.make_archive('temp', 'zip', algorithm_directory)
+    print('Compressing encrypted algorithm and removing unencrypted secrets...')
+    with ZipFile(filename, 'w', allowZip64=True) as zip_out:
+        for root, _, files in os.walk(algorithm_directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, algorithm_directory)
+
+                if arcname not in original_files:
+                    with open(file_path, 'rb') as source, zip_out.open(arcname, 'w', force_zip64=True) as target:
+                        shutil.copyfileobj(source, target, length=16*1024*1024)
+
     for i in new_files:
         pathlib.Path(i).unlink()
-
-    zip_in = ZipFile('temp.zip', 'r')
-    zip_out = ZipFile(filename, 'w')
-
-    for item in zip_in.infolist():
-        buffer = zip_in.read(item.filename)
-        if item.filename not in original_files:
-            zip_out.writestr(item, buffer)
-    zip_in.close()
-    zip_out.close()
-
-    pathlib.Path('temp.zip').unlink()
 
     print(f'Algorithm successfully encrypted as {filename}.')
 
