@@ -7,6 +7,7 @@ from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.serialization import load_pem_public_key
 from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 from zipfile import ZipFile
 from azure.storage.blob import ContainerClient
@@ -100,35 +101,50 @@ def encrypt_algorithm(algorithm_directory: str, content_encryption_key: str, fil
         key = derived_password[0:32]
         iv = derived_password[32:(32 + 12)]
 
-        with open(newpaths[1], 'rb') as encrypt:
-            data = encrypt.read()
+        cipher = Cipher(algorithms.AES(key), modes.GCM(iv))
+        encryptor = cipher.encryptor()
 
-        encrypted = AESGCM(key).encrypt(iv, data, None)
-        encrypted = b'Salted__' + salt + encrypted
+        chunk_size = 16 * 1024 * 1024 # 16 MB chunks
+        with open(newpaths[1], 'rb') as encrypt, open(newpaths[0], 'wb') as write:
+            write.write(b'Salted__' + salt)
 
-        with open(newpaths[0], 'wb') as write:
-            write.write(encrypted)
+            bytes_processed = 0
+            while True:
+                chunk = encrypt.read(chunk_size)
+                if not chunk:
+                    break
+
+                encrypted = encryptor.update(chunk)
+                write.write(encrypted)
+                bytes_processed += len(chunk)
+
+                del chunk
+                del encrypted
         
+            final_data = encryptor.finalize()
+            write.write(final_data)
+            tag = encryptor.tag
+            write.write(tag)
+                
         original_files.append(f[1])
         new_files.append(newpaths[0])
 
         print(f'Secret {f[0]} encrypted ({n}/{count}).')
+        n += 1
 
-    shutil.make_archive('temp', 'zip', algorithm_directory)
+    print('Compressing encrypted algorithm and removing unencrypted secrets...')
+    with ZipFile(filename, 'w', allowZip64=True) as zip_out:
+        for root, _, files in os.walk(algorithm_directory):
+            for file in files:
+                file_path = os.path.join(root, file)
+                arcname = os.path.relpath(file_path, algorithm_directory)
+
+                if arcname not in original_files:
+                    with open(file_path, 'rb') as source, zip_out.open(arcname, 'w', force_zip64=True) as target:
+                        shutil.copyfileobj(source, target, length=16*1024*1024)
+
     for i in new_files:
         pathlib.Path(i).unlink()
-
-    zip_in = ZipFile('temp.zip', 'r')
-    zip_out = ZipFile(filename, 'w')
-
-    for item in zip_in.infolist():
-        buffer = zip_in.read(item.filename)
-        if item.filename not in original_files:
-            zip_out.writestr(item, buffer)
-    zip_in.close()
-    zip_out.close()
-
-    pathlib.Path('temp.zip').unlink()
 
     print(f'Algorithm successfully encrypted as {filename}.')
 
@@ -208,10 +224,16 @@ def encrypt_upload_dataset_from_blob(dataset_sas_uri_unencrypted: str, content_e
         unencrypted_client = ContainerClient.from_container_url(dataset_sas_uri_unencrypted)
         encrypted_client = ContainerClient.from_container_url(dataset_sas_uri)
         print(f'Beginning download of blob {blob} ({n}/{str(count)})...')
-        data = unencrypted_client.download_blob(blob).readall()
+        stream = unencrypted_client.download_blob(blob)
+
+        chunks = []
+        chunks.append(b'Salted__' + salt)
         print(f'Encrypting blob {blob}...')
-        encrypted = AESGCM(key).encrypt(iv, data, None)
-        encrypted = b'Salted__' + salt + encrypted
+        for chunk in stream.chunks():
+            encrypted = AESGCM(key).encrypt(iv, chunk, None)
+            chunks.append(encrypted)
+        encrypted = b"".join(chunks)
+
         print(f'Uploading blob {blob}...')
         encrypted_client.upload_blob(blob + '.bkenc', encrypted, overwrite=True)
         print(f'Blob {blob + '.bkenc'} uploaded ({n}/{str(count)}).')
