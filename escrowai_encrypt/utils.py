@@ -1,6 +1,6 @@
 import pathlib
 from azure.storage.blob import BlobClient
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 
 def encrypt_data(file, salt, key, base_folder, folder, iv, url, n, count):
@@ -11,15 +11,30 @@ def encrypt_data(file, salt, key, base_folder, folder, iv, url, n, count):
     
     print(f'Encrypting file {file} ({n}/{count})...')
 
-    with open(folder + '/' + file, 'rb') as encrypt:
-        data = encrypt.read()
+    cipher = Cipher(algorithms.AES(key), modes.GCM(iv))
+    encryptor = cipher.encryptor()
 
-    encrypted = AESGCM(key).encrypt(iv, data, None)
-    encrypted = b'Salted__' + salt + encrypted
+    chunk_size = 16 * 1024 * 1024 # 16 MB chunks
+    with open(folder + '/' + file, 'rb') as encrypt, open(folder + '/' + file + ".bkenc", 'wb') as write:
+        write.write(b'Salted__' + salt)
 
-    # write new encrypted file, delete old
-    with open(folder + '/' + file + ".bkenc", 'wb') as write:
-        write.write(encrypted)
+        bytes_processed = 0
+        while True:
+            chunk = encrypt.read(chunk_size)
+            if not chunk:
+                break
+
+            encrypted = encryptor.update(chunk)
+            write.write(encrypted)
+            bytes_processed += len(chunk)
+
+            del chunk
+            del encrypted
+    
+        final_data = encryptor.finalize()
+        write.write(final_data)
+        tag = encryptor.tag
+        write.write(tag)
 
     upload_to_blob(url, folder + '/' + file + ".bkenc", base_folder)
 
